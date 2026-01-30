@@ -247,7 +247,7 @@ kiro-rs/
 ├── src/
 │   ├── main.rs                 # 程序入口
 │   ├── model/                  # 配置和参数模型
-│   │   ├── config.rs           # 应用配置
+│   │   ├── config.rs           # 应用配置（支持环境变量覆盖）
 │   │   └── arg.rs              # 命令行参数
 │   ├── anthropic/              # Anthropic API 兼容层
 │   │   ├── router.rs           # 路由配置
@@ -257,6 +257,17 @@ kiro-rs/
 │   │   ├── converter.rs        # 协议转换器
 │   │   ├── stream.rs           # 流式响应处理
 │   │   └── token.rs            # Token 估算
+│   ├── admin/                  # Admin API
+│   │   ├── router.rs           # Admin 路由
+│   │   ├── handlers.rs         # Admin 处理器
+│   │   ├── service.rs          # 业务逻辑
+│   │   ├── types.rs            # Admin 类型定义
+│   │   ├── middleware.rs       # Admin 认证
+│   │   └── error.rs            # 错误处理
+│   ├── db/                     # 数据库存储（可选）
+│   │   ├── mod.rs              # 模块入口
+│   │   ├── store.rs            # CredentialStore trait
+│   │   └── pg.rs               # PostgreSQL 实现
 │   └── kiro/                   # Kiro API 客户端
 │       ├── provider.rs         # API 提供者
 │       ├── token_manager.rs    # Token 管理
@@ -271,9 +282,15 @@ kiro-rs/
 │           ├── frame.rs        # 帧解析
 │           ├── header.rs       # 头部解析
 │           └── crc.rs          # CRC 校验
+├── admin-ui/                   # Admin UI 前端（React + Vite）
+│   ├── src/
+│   │   ├── components/         # UI 组件
+│   │   ├── hooks/              # React Hooks
+│   │   ├── api/                # API 调用
+│   │   └── types/              # TypeScript 类型
+│   └── dist/                   # 构建产物（嵌入二进制）
 ├── Cargo.toml                  # 项目配置
 ├── config.example.json         # 配置示例
-├── admin-ui/                   # Admin UI 前端工程（构建产物会嵌入二进制）
 ├── tools/                      # 辅助工具
 └── Dockerfile                  # Docker 构建文件
 ```
@@ -359,10 +376,40 @@ kiro-rs/
 
 ## 环境变量
 
-可通过环境变量配置日志级别：
+### 日志级别
 
 ```bash
 RUST_LOG=debug ./target/release/kiro-rs
+```
+
+### 配置覆盖
+
+所有 `config.json` 配置项均可通过 `KIRO_` 前缀的环境变量覆盖（环境变量优先级高于配置文件）：
+
+| 环境变量 | 对应配置项 | 说明 |
+|---------|-----------|------|
+| `KIRO_HOST` | `host` | 监听地址 |
+| `KIRO_PORT` | `port` | 监听端口 |
+| `KIRO_REGION` | `region` | AWS 区域 |
+| `KIRO_API_KEY` | `apiKey` | API 认证密钥 |
+| `KIRO_ADMIN_API_KEY` | `adminApiKey` | Admin API 密钥 |
+| `KIRO_VERSION` | `kiroVersion` | Kiro 版本号 |
+| `KIRO_MACHINE_ID` | `machineId` | 机器码 |
+| `KIRO_SYSTEM_VERSION` | `systemVersion` | 系统版本 |
+| `KIRO_NODE_VERSION` | `nodeVersion` | Node 版本 |
+| `KIRO_TLS_BACKEND` | `tlsBackend` | TLS 后端 |
+| `KIRO_PROXY_URL` | `proxyUrl` | 代理地址 |
+| `KIRO_PROXY_USERNAME` | `proxyUsername` | 代理用户名 |
+| `KIRO_PROXY_PASSWORD` | `proxyPassword` | 代理密码 |
+| `KIRO_COUNT_TOKENS_API_URL` | `countTokensApiUrl` | Token 统计 API |
+| `KIRO_COUNT_TOKENS_API_KEY` | `countTokensApiKey` | Token 统计 API 密钥 |
+| `KIRO_COUNT_TOKENS_AUTH_TYPE` | `countTokensAuthType` | Token 统计认证类型 |
+| `KIRO_DATABASE_URL` | `databaseUrl` | PostgreSQL 连接地址 |
+| `DATABASE_URL` | `databaseUrl` | PostgreSQL 连接地址（兼容通用变量名） |
+
+示例：
+```bash
+KIRO_HOST=0.0.0.0 KIRO_PORT=3000 KIRO_API_KEY=sk-xxx ./kiro-rs
 ```
 
 ## 注意事项
@@ -375,17 +422,128 @@ RUST_LOG=debug ./target/release/kiro-rs
 
 当 `config.json` 配置了非空 `adminApiKey` 时，会启用：
 
-- **Admin API（认证同 API Key）**
-  - `GET /api/admin/credentials` - 获取所有凭据状态
-  - `POST /api/admin/credentials` - 添加新凭据
-  - `DELETE /api/admin/credentials/:id` - 删除凭据
-  - `POST /api/admin/credentials/:id/disabled` - 设置凭据禁用状态
-  - `POST /api/admin/credentials/:id/priority` - 设置凭据优先级
-  - `POST /api/admin/credentials/:id/reset` - 重置失败计数
-  - `GET /api/admin/credentials/:id/balance` - 获取凭据余额
+### Admin API
 
-- **Admin UI**
-  - `GET /admin` - 访问管理页面（需要在编译前构建 `admin-ui/dist`）
+所有端点需要认证（`x-api-key` 或 `Authorization: Bearer`）。
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/admin/credentials` | GET | 获取凭据列表（分页：`?page=1&pageSize=20`） |
+| `/api/admin/credentials` | POST | 添加新凭据 |
+| `/api/admin/credentials/:id` | DELETE | 删除凭据 |
+| `/api/admin/credentials/:id/disabled` | POST | 设置凭据禁用状态 |
+| `/api/admin/credentials/:id/priority` | POST | 设置凭据优先级 |
+| `/api/admin/credentials/:id/reset` | POST | 重置失败计数 |
+| `/api/admin/credentials/:id/balance` | GET | 获取凭据余额 |
+| `/api/admin/credentials/batch-import` | POST | 批量导入凭据 |
+| `/api/admin/credentials/batch-delete` | POST | 批量删除凭据 |
+| `/api/admin/credentials/export` | GET | 导出凭据（`?format=json` 或 `?format=csv`） |
+
+### Admin UI
+
+访问 `GET /admin` 打开管理页面（需要在编译前构建 `admin-ui/dist`）。
+
+**功能：**
+- 凭据列表（分页浏览）
+- 添加/删除/禁用凭据
+- 设置优先级、重置失败计数
+- 查看凭据余额
+- 批量选择与删除
+- 导入 JSON/CSV 文件
+- 导出为 JSON/CSV
+
+## 云平台部署
+
+### Zeabur 部署
+
+1. **Fork 或导入仓库**
+   - 在 [Zeabur](https://zeabur.com) 创建项目
+   - 选择 Git 部署，导入本仓库
+
+2. **配置环境变量**
+
+   在 Zeabur 控制台的「Variables」中添加（大部分有默认值，可选配置）：
+
+   | 变量名 | 默认值 | 说明 |
+   |--------|--------|------|
+   | `KIRO_HOST` | `0.0.0.0` | 监听地址（默认已适配容器） |
+   | `KIRO_PORT` | `8990` | 监听端口 |
+   | `KIRO_API_KEY` | `sk-kiro-rs-default-key` | API 密钥（建议修改） |
+   | `KIRO_REGION` | `us-east-1` | AWS 区域 |
+   | `KIRO_ADMIN_API_KEY` | 无 | Admin API 密钥（推荐配置） |
+   | `KIRO_TLS_BACKEND` | `rustls` | TLS 后端 |
+
+   > **最小配置**：如果只是测试，可以不配置任何环境变量，直接部署即可启动。建议至少配置 `KIRO_API_KEY` 和 `KIRO_ADMIN_API_KEY`。
+
+3. **添加凭据**
+
+   部署成功后，通过 Admin API 添加凭据：
+
+   ```bash
+   # 添加单个凭据
+   curl -X POST https://your-app.zeabur.app/api/admin/credentials \
+     -H "Content-Type: application/json" \
+     -H "x-api-key: YOUR_ADMIN_API_KEY" \
+     -d '{
+       "refreshToken": "YOUR_REFRESH_TOKEN",
+       "authMethod": "social"
+     }'
+
+   # 或批量导入
+   curl -X POST https://your-app.zeabur.app/api/admin/credentials/batch-import \
+     -H "Content-Type: application/json" \
+     -H "x-api-key: YOUR_ADMIN_API_KEY" \
+     -d '{
+       "credentials": [
+         {"refreshToken": "TOKEN1", "authMethod": "social"},
+         {"refreshToken": "TOKEN2", "authMethod": "idc", "clientId": "xxx", "clientSecret": "xxx"}
+       ]
+     }'
+   ```
+
+4. **访问服务**
+   - API: `https://your-app.zeabur.app/v1/messages`
+   - Admin UI: `https://your-app.zeabur.app/admin`
+
+### Docker 部署
+
+```bash
+# 构建镜像
+docker build -t kiro-rs .
+
+# 方式一：配置文件模式
+docker run -d -p 8990:8990 \
+  -v /path/to/config:/app/config \
+  kiro-rs \
+  ./kiro-rs -c /app/config/config.json --credentials /app/config/credentials.json
+
+# 方式二：环境变量模式（配合 Admin API 添加凭据）
+docker run -d -p 8990:8990 \
+  -e KIRO_HOST=0.0.0.0 \
+  -e KIRO_PORT=8990 \
+  -e KIRO_API_KEY=sk-your-api-key \
+  -e KIRO_REGION=us-east-1 \
+  -e KIRO_ADMIN_API_KEY=sk-admin-key \
+  kiro-rs
+```
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  kiro-rs:
+    build: .
+    ports:
+      - "8990:8990"
+    environment:
+      - KIRO_HOST=0.0.0.0
+      - KIRO_PORT=8990
+      - KIRO_API_KEY=sk-your-api-key
+      - KIRO_REGION=us-east-1
+      - KIRO_ADMIN_API_KEY=sk-admin-key
+    restart: unless-stopped
+```
 
 ## License
 

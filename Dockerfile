@@ -28,4 +28,7 @@ VOLUME ["/app/config"]
 
 EXPOSE 8990
 
-CMD ["./kiro-rs", "-c", "/app/config/config.json", "--credentials", "/app/config/credentials.json"]
+# 支持两种模式：
+# 1. 配置文件模式：挂载 /app/config 目录
+# 2. 环境变量模式：通过 KIRO_* 环境变量配置
+CMD ["./kiro-rs"]

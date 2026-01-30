@@ -8,6 +8,11 @@ import type {
   SetPriorityRequest,
   AddCredentialRequest,
   AddCredentialResponse,
+  BatchImportRequest,
+  BatchImportResponse,
+  BatchDeleteRequest,
+  BatchDeleteResponse,
+  ExportFormat,
 } from '@/types/api'
 
 // 创建 axios 实例
@@ -27,9 +32,15 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// 获取所有凭据状态
-export async function getCredentials(): Promise<CredentialsStatusResponse> {
-  const { data } = await api.get<CredentialsStatusResponse>('/credentials')
+// 分页参数
+export interface PaginationParams {
+  page?: number
+  pageSize?: number
+}
+
+// 获取所有凭据状态（分页）
+export async function getCredentials(params?: PaginationParams): Promise<CredentialsStatusResponse> {
+  const { data } = await api.get<CredentialsStatusResponse>('/credentials', { params })
   return data
 }
 
@@ -83,4 +94,41 @@ export async function addCredential(
 export async function deleteCredential(id: number): Promise<SuccessResponse> {
   const { data } = await api.delete<SuccessResponse>(`/credentials/${id}`)
   return data
+}
+
+// 批量导入凭据
+export async function batchImportCredentials(
+  req: BatchImportRequest
+): Promise<BatchImportResponse> {
+  const { data } = await api.post<BatchImportResponse>('/credentials/batch-import', req)
+  return data
+}
+
+// 批量删除凭据
+export async function batchDeleteCredentials(
+  req: BatchDeleteRequest
+): Promise<BatchDeleteResponse> {
+  const { data } = await api.post<BatchDeleteResponse>('/credentials/batch-delete', req)
+  return data
+}
+
+// 导出凭据
+export async function exportCredentials(format: ExportFormat = 'json'): Promise<Blob> {
+  const { data } = await api.get('/credentials/export', {
+    params: { format },
+    responseType: 'blob',
+  })
+  return data
+}
+
+// 下载导出文件
+export function downloadExport(blob: Blob, format: ExportFormat) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `credentials.${format}`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }

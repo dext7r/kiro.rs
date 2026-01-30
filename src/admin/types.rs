@@ -4,22 +4,46 @@ use serde::{Deserialize, Serialize};
 
 // ============ 凭据状态 ============
 
-/// 所有凭据状态响应
+/// 分页查询参数
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginationQuery {
+    #[serde(default = "default_page")]
+    pub page: i32,
+    #[serde(default = "default_page_size")]
+    pub page_size: i32,
+}
+
+fn default_page() -> i32 {
+    1
+}
+
+fn default_page_size() -> i32 {
+    20
+}
+
+/// 所有凭据状态响应（分页）
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CredentialsStatusResponse {
     /// 凭据总数
-    pub total: usize,
+    pub total: i64,
     /// 可用凭据数量（未禁用）
     pub available: usize,
     /// 当前活跃凭据 ID
     pub current_id: u64,
+    /// 当前页码
+    pub page: i32,
+    /// 每页数量
+    pub page_size: i32,
+    /// 总页数
+    pub total_pages: i32,
     /// 各凭据状态列表
     pub credentials: Vec<CredentialStatusItem>,
 }
 
 /// 单个凭据的状态信息
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CredentialStatusItem {
     /// 凭据唯一 ID
@@ -90,6 +114,79 @@ pub struct AddCredentialRequest {
 
 fn default_auth_method() -> String {
     "social".to_string()
+}
+
+/// 批量导入凭据请求
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchImportRequest {
+    pub credentials: Vec<AddCredentialRequest>,
+}
+
+/// 批量导入凭据响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchImportResponse {
+    pub imported: i32,
+    pub failed: i32,
+    pub errors: Vec<BatchImportError>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchImportError {
+    pub index: usize,
+    pub message: String,
+}
+
+/// 批量删除凭据请求
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchDeleteRequest {
+    pub ids: Vec<u64>,
+}
+
+/// 批量删除凭据响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchDeleteResponse {
+    pub deleted: i32,
+    pub failed: i32,
+    pub errors: Vec<BatchDeleteError>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchDeleteError {
+    pub id: u64,
+    pub message: String,
+}
+
+/// 导出格式
+#[derive(Debug, Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum ExportFormat {
+    Json,
+    Csv,
+}
+
+/// 凭据导出记录（包含所有字段）
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CredentialExportItem {
+    pub id: u64,
+    pub refresh_token: String,
+    pub access_token: Option<String>,
+    pub profile_arn: Option<String>,
+    pub expires_at: Option<String>,
+    pub auth_method: String,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+    pub priority: u32,
+    pub region: Option<String>,
+    pub machine_id: Option<String>,
+    pub failure_count: u32,
+    pub disabled: bool,
 }
 
 /// 添加凭据成功响应

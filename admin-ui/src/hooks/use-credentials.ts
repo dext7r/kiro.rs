@@ -7,15 +7,20 @@ import {
   getCredentialBalance,
   addCredential,
   deleteCredential,
+  batchImportCredentials,
+  batchDeleteCredentials,
+  exportCredentials,
+  downloadExport,
+  type PaginationParams,
 } from '@/api/credentials'
-import type { AddCredentialRequest } from '@/types/api'
+import type { AddCredentialRequest, BatchImportRequest, BatchDeleteRequest, ExportFormat } from '@/types/api'
 
-// 查询凭据列表
-export function useCredentials() {
+// 查询凭据列表（分页）
+export function useCredentials(params?: PaginationParams) {
   return useQuery({
-    queryKey: ['credentials'],
-    queryFn: getCredentials,
-    refetchInterval: 30000, // 每 30 秒刷新一次
+    queryKey: ['credentials', params?.page, params?.pageSize],
+    queryFn: () => getCredentials(params),
+    refetchInterval: 30000,
   })
 }
 
@@ -82,6 +87,38 @@ export function useDeleteCredential() {
     mutationFn: (id: number) => deleteCredential(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['credentials'] })
+    },
+  })
+}
+
+// 批量导入凭据
+export function useBatchImport() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (req: BatchImportRequest) => batchImportCredentials(req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['credentials'] })
+    },
+  })
+}
+
+// 批量删除凭据
+export function useBatchDelete() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (req: BatchDeleteRequest) => batchDeleteCredentials(req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['credentials'] })
+    },
+  })
+}
+
+// 导出凭据
+export function useExportCredentials() {
+  return useMutation({
+    mutationFn: async (format: ExportFormat) => {
+      const blob = await exportCredentials(format)
+      downloadExport(blob, format)
     },
   })
 }

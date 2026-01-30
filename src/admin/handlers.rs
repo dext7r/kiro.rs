@@ -2,19 +2,26 @@
 
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
+    http::header,
     response::IntoResponse,
 };
 
 use super::{
     middleware::AdminState,
-    types::{AddCredentialRequest, SetDisabledRequest, SetPriorityRequest, SuccessResponse},
+    types::{
+        AddCredentialRequest, BatchDeleteRequest, BatchImportRequest, ExportFormat,
+        PaginationQuery, SetDisabledRequest, SetPriorityRequest, SuccessResponse,
+    },
 };
 
 /// GET /api/admin/credentials
-/// 获取所有凭据状态
-pub async fn get_all_credentials(State(state): State<AdminState>) -> impl IntoResponse {
-    let response = state.service.get_all_credentials();
+/// 获取所有凭据状态（分页）
+pub async fn get_all_credentials(
+    State(state): State<AdminState>,
+    Query(pagination): Query<PaginationQuery>,
+) -> impl IntoResponse {
+    let response = state.service.get_all_credentials(pagination.page, pagination.page_size);
     Json(response)
 }
 
@@ -100,5 +107,92 @@ pub async fn delete_credential(
     match state.service.delete_credential(id) {
         Ok(_) => Json(SuccessResponse::new(format!("凭据 #{} 已删除", id))).into_response(),
         Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
+    }
+}
+
+/// POST /api/admin/credentials/batch-import
+/// 批量导入凭据
+pub async fn batch_import(
+    State(state): State<AdminState>,
+    Json(payload): Json<BatchImportRequest>,
+) -> impl IntoResponse {
+    match state.service.batch_import(payload).await {
+        Ok(response) => Json(response).into_response(),
+        Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
+    }
+}
+
+/// POST /api/admin/credentials/batch-delete
+/// 批量删除凭据
+pub async fn batch_delete(
+    State(state): State<AdminState>,
+    Json(payload): Json<BatchDeleteRequest>,
+) -> impl IntoResponse {
+    let response = state.service.batch_delete(payload);
+    Json(response)
+}
+
+/// 导出格式查询参数
+#[derive(serde::Deserialize)]
+pub struct ExportQuery {
+    #[serde(default = "default_export_format")]
+    pub format: ExportFormat,
+}
+
+fn default_export_format() -> ExportFormat {
+    ExportFormat::Json
+}
+
+/// GET /api/admin/credentials/export
+/// 导出所有凭据
+pub async fn export_credentials(
+    State(state): State<AdminState>,
+    Query(query): Query<ExportQuery>,
+) -> impl IntoResponse {
+    let credentials = state.service.export_all();
+
+    match query.format {
+        ExportFormat::Json => {
+            let json = serde_json::to_string_pretty(&credentials).unwrap_or_default();
+            (
+                [(header::CONTENT_TYPE, "application/json")],
+                [(header::CONTENT_DISPOSITION, "attachment; filename=\"credentials.json\"")],
+                json,
+            )
+                .into_response()
+        }
+        ExportFormat::Csv => {
+            let mut wtr = csv::Writer::from_writer(vec![]);
+            // CSV header
+            let _ = wtr.write_record([
+                "id", "refresh_token", "access_token", "profile_arn", "expires_at",
+                "auth_method", "client_id", "client_secret", "priority", "region",
+                "machine_id", "failure_count", "disabled",
+            ]);
+            for cred in &credentials {
+                let _ = wtr.write_record([
+                    &cred.id.to_string(),
+                    &cred.refresh_token,
+                    cred.access_token.as_deref().unwrap_or(""),
+                    cred.profile_arn.as_deref().unwrap_or(""),
+                    cred.expires_at.as_deref().unwrap_or(""),
+                    &cred.auth_method,
+                    cred.client_id.as_deref().unwrap_or(""),
+                    cred.client_secret.as_deref().unwrap_or(""),
+                    &cred.priority.to_string(),
+                    cred.region.as_deref().unwrap_or(""),
+                    cred.machine_id.as_deref().unwrap_or(""),
+                    &cred.failure_count.to_string(),
+                    &cred.disabled.to_string(),
+                ]);
+            }
+            let csv_data = String::from_utf8(wtr.into_inner().unwrap_or_default()).unwrap_or_default();
+            (
+                [(header::CONTENT_TYPE, "text/csv")],
+                [(header::CONTENT_DISPOSITION, "attachment; filename=\"credentials.csv\"")],
+                csv_data,
+            )
+                .into_response()
+        }
     }
 }

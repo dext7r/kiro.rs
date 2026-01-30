@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::fs;
 use std::path::Path;
 
@@ -34,7 +35,7 @@ pub struct Config {
     #[serde(default)]
     pub machine_id: Option<String>,
 
-    #[serde(default)]
+    #[serde(default = "default_api_key")]
     pub api_key: Option<String>,
 
     #[serde(default = "default_system_version")]
@@ -74,14 +75,18 @@ pub struct Config {
     /// Admin API 密钥（可选，启用 Admin API 功能）
     #[serde(default)]
     pub admin_api_key: Option<String>,
+
+    /// PostgreSQL 数据库连接地址（可选，启用数据库存储）
+    #[serde(default)]
+    pub database_url: Option<String>,
 }
 
 fn default_host() -> String {
-    "127.0.0.1".to_string()
+    "0.0.0.0".to_string()
 }
 
 fn default_port() -> u16 {
-    8080
+    8990
 }
 
 fn default_region() -> String {
@@ -109,6 +114,10 @@ fn default_tls_backend() -> TlsBackend {
     TlsBackend::Rustls
 }
 
+fn default_api_key() -> Option<String> {
+    Some("sk-kiro-rs-default-key".to_string())
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -117,7 +126,7 @@ impl Default for Config {
             region: default_region(),
             kiro_version: default_kiro_version(),
             machine_id: None,
-            api_key: None,
+            api_key: default_api_key(),
             system_version: default_system_version(),
             node_version: default_node_version(),
             tls_backend: default_tls_backend(),
@@ -128,6 +137,7 @@ impl Default for Config {
             proxy_username: None,
             proxy_password: None,
             admin_api_key: None,
+            database_url: None,
         }
     }
 }
@@ -138,16 +148,69 @@ impl Config {
         "config.json"
     }
 
-    /// 从文件加载配置
+    /// 从文件加载配置，环境变量优先覆盖
     pub fn load<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let path = path.as_ref();
-        if !path.exists() {
-            // 配置文件不存在，返回默认配置
-            return Ok(Self::default());
+        let mut config = if path.exists() {
+            let content = fs::read_to_string(path)?;
+            serde_json::from_str::<Config>(&content)?
+        } else {
+            Self::default()
+        };
+
+        // 环境变量覆盖（KIRO_ 前缀）
+        macro_rules! env_override {
+            ($field:expr, $key:expr) => {
+                if let Ok(v) = env::var($key) {
+                    $field = v;
+                }
+            };
+            (opt $field:expr, $key:expr) => {
+                if let Ok(v) = env::var($key) {
+                    $field = Some(v);
+                }
+            };
+            (parse $field:expr, $key:expr) => {
+                if let Ok(v) = env::var($key) {
+                    if let Ok(parsed) = v.parse() {
+                        $field = parsed;
+                    }
+                }
+            };
         }
 
-        let content = fs::read_to_string(path)?;
-        let config: Config = serde_json::from_str(&content)?;
+        env_override!(config.host, "KIRO_HOST");
+        env_override!(parse config.port, "KIRO_PORT");
+        env_override!(config.region, "KIRO_REGION");
+        env_override!(config.kiro_version, "KIRO_VERSION");
+        env_override!(opt config.machine_id, "KIRO_MACHINE_ID");
+        env_override!(opt config.api_key, "KIRO_API_KEY");
+        env_override!(config.system_version, "KIRO_SYSTEM_VERSION");
+        env_override!(config.node_version, "KIRO_NODE_VERSION");
+        env_override!(opt config.count_tokens_api_url, "KIRO_COUNT_TOKENS_API_URL");
+        env_override!(opt config.count_tokens_api_key, "KIRO_COUNT_TOKENS_API_KEY");
+        env_override!(config.count_tokens_auth_type, "KIRO_COUNT_TOKENS_AUTH_TYPE");
+        env_override!(opt config.proxy_url, "KIRO_PROXY_URL");
+        env_override!(opt config.proxy_username, "KIRO_PROXY_USERNAME");
+        env_override!(opt config.proxy_password, "KIRO_PROXY_PASSWORD");
+        env_override!(opt config.admin_api_key, "KIRO_ADMIN_API_KEY");
+        env_override!(opt config.database_url, "KIRO_DATABASE_URL");
+
+        // 兼容通用 DATABASE_URL
+        if config.database_url.is_none() {
+            if let Ok(v) = env::var("DATABASE_URL") {
+                config.database_url = Some(v);
+            }
+        }
+
+        if let Ok(v) = env::var("KIRO_TLS_BACKEND") {
+            match v.as_str() {
+                "rustls" => config.tls_backend = TlsBackend::Rustls,
+                "native-tls" => config.tls_backend = TlsBackend::NativeTls,
+                _ => {}
+            }
+        }
+
         Ok(config)
     }
 }

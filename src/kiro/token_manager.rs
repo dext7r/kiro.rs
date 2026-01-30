@@ -439,6 +439,15 @@ pub struct ManagerSnapshot {
     pub available: usize,
 }
 
+/// 完整凭据条目快照（用于导出）
+#[derive(Debug, Clone)]
+pub struct FullCredentialEntry {
+    pub id: u64,
+    pub credentials: KiroCredentials,
+    pub failure_count: u32,
+    pub disabled: bool,
+}
+
 /// 多凭据 Token 管理器
 ///
 /// 支持多个凭据的管理，实现固定优先级 + 故障转移策略
@@ -1038,6 +1047,20 @@ impl MultiTokenManager {
             total: entries.len(),
             available,
         }
+    }
+
+    /// 获取完整凭据快照（用于导出）
+    pub fn snapshot_full(&self) -> Vec<FullCredentialEntry> {
+        let entries = self.entries.lock();
+        entries
+            .iter()
+            .map(|e| FullCredentialEntry {
+                id: e.id,
+                credentials: e.credentials.clone(),
+                failure_count: e.failure_count,
+                disabled: e.disabled,
+            })
+            .collect()
     }
 
     /// 设置凭据禁用状态（Admin API）

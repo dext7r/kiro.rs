@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -25,6 +26,8 @@ import {
 interface CredentialCardProps {
   credential: CredentialStatusItem
   onViewBalance: (id: number) => void
+  selected?: boolean
+  onSelectChange?: (selected: boolean) => void
 }
 
 function formatAuthMethodLabel(authMethod: string | null): string {
@@ -33,7 +36,7 @@ function formatAuthMethodLabel(authMethod: string | null): string {
   return authMethod
 }
 
-export function CredentialCard({ credential, onViewBalance }: CredentialCardProps) {
+export function CredentialCard({ credential, onViewBalance, selected, onSelectChange }: CredentialCardProps) {
   const [editingPriority, setEditingPriority] = useState(false)
   const [priorityValue, setPriorityValue] = useState(String(credential.priority))
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -115,10 +118,16 @@ export function CredentialCard({ credential, onViewBalance }: CredentialCardProp
 
   return (
     <>
-      <Card className={credential.isCurrent ? 'ring-2 ring-primary' : ''}>
+      <Card className={`${credential.isCurrent ? 'ring-2 ring-primary' : ''} ${selected ? 'bg-accent/50' : ''}`}>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2">
+              {onSelectChange && (
+                <Checkbox
+                  checked={selected}
+                  onCheckedChange={(checked) => onSelectChange(checked === true)}
+                />
+              )}
               凭据 #{credential.id}
               {credential.isCurrent && (
                 <Badge variant="success">当前</Badge>

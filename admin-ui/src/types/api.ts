@@ -1,8 +1,11 @@
-// 凭据状态响应
+// 凭据状态响应（分页）
 export interface CredentialsStatusResponse {
   total: number
   available: number
   currentId: number
+  page: number
+  pageSize: number
+  totalPages: number
   credentials: CredentialStatusItem[]
 }
 
@@ -67,4 +70,58 @@ export interface AddCredentialResponse {
   success: boolean
   message: string
   credentialId: number
+}
+
+// 批量导入请求
+export interface BatchImportRequest {
+  credentials: AddCredentialRequest[]
+}
+
+// 批量导入响应
+export interface BatchImportResponse {
+  imported: number
+  failed: number
+  errors: BatchImportError[]
+}
+
+export interface BatchImportError {
+  index: number
+  message: string
+}
+
+// 批量删除请求
+export interface BatchDeleteRequest {
+  ids: number[]
+}
+
+// 批量删除响应
+export interface BatchDeleteResponse {
+  deleted: number
+  failed: number
+  errors: BatchDeleteError[]
+}
+
+export interface BatchDeleteError {
+  id: number
+  message: string
+}
+
+// 导出格式
+export type ExportFormat = 'json' | 'csv'
+
+// 凭据导出记录
+export interface CredentialExportItem {
+  id: number
+  refreshToken: string
+  accessToken: string | null
+  profileArn: string | null
+  expiresAt: string | null
+  authMethod: string
+  clientId: string | null
+  clientSecret: string | null
+  priority: number
+  region: string | null
+  machineId: string | null
+  failureCount: number
+  disabled: boolean
 }
